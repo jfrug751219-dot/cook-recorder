@@ -55,7 +55,7 @@ a{color:var(--accent)}
 <body>
 <main>
 <h1>요리 기록 시험</h1>
-<p class="sub">시험판 v0.01 · 아이폰에서 카메라, 녹음, AI 정리가 되는지 확인하는 페이지</p>
+<p class="sub">시험판 v0.02 · 아이폰에서 카메라, 녹음, AI 정리가 되는지 확인하는 페이지</p>
 
 <section class="card">
   <h2>이 폰의 지원 상태</h2>
@@ -90,6 +90,9 @@ a{color:var(--accent)}
   </select>
   <button class="primary" id="btnRec" disabled>녹음 시작</button>
   <button id="btnShot" disabled>사진 한 장 찍기</button>
+  <button id="btnPick">사진함에서 가져오기</button>
+  <input id="filePick" type="file" accept="image/*" multiple hidden>
+  <p class="sub">사진함 사진은 녹음 없이도 넣을 수 있습니다. 녹음 중에 찍은 사진이면 찍은 시각에 맞춰 자동으로 배치됩니다.</p>
   <p class="state" id="s2">아직 시험하지 않음</p>
   <audio id="player" controls hidden></audio>
   <div class="thumbs" id="thumbs"></div>
@@ -119,7 +122,7 @@ a{color:var(--accent)}
 <script>
 (function(){
 "use strict";
-var VERSION="v0.01";
+var VERSION="v0.02";
 var BASE="https://generativelanguage.googleapis.com/v1beta";
 var FALLBACK_MODELS=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-4-hydrogen"];
 var MAX_PHOTOS=16, MAX_REQUEST_B64=19*1024*1024;
@@ -233,14 +236,91 @@ function capture(reason){
   var c=document.createElement("canvas");c.width=Math.round(w*s);c.height=Math.round(h*s);
   c.getContext("2d").drawImage(video,0,0,c.width,c.height);
   var t=recording?(Date.now()-recStart)/1000:null;
-  c.toBlob(function(b){
-    if(!b){log("사진 저장 실패");return;}
-    var p={t:t,blob:b,url:URL.createObjectURL(b)};photos.push(p);
-    var img=document.createElement("img");img.src=p.url;img.alt="사진 "+photos.length;
-    $("thumbs").appendChild(img);$("thumbs").scrollLeft=$("thumbs").scrollWidth;
-    log("사진 "+photos.length+" ("+reason+", "+c.width+"x"+c.height+", "+mb(b.size)+")");
-  },"image/jpeg",0.8);
+  c.toBlob(function(b){addPhoto(b,t,reason,c.width,c.height,false);},"image/jpeg",0.8);
   var f=$("flash");f.style.opacity=".8";setTimeout(function(){f.style.opacity="0";},80);
+}
+
+function refreshAI(){$("btnAI").disabled=recording||!((audioBlob&&audioBlob.size)||photos.length);}
+function addPhoto(b,t,reason,w,h,picked){
+  if(!b){log("사진 저장 실패 ("+reason+")");return;}
+  var p={t:t,blob:b,url:URL.createObjectURL(b),picked:!!picked};photos.push(p);
+  var img=document.createElement("img");img.src=p.url;img.alt="사진 "+photos.length;
+  $("thumbs").appendChild(img);$("thumbs").scrollLeft=$("thumbs").scrollWidth;
+  log("사진 "+photos.length+" ("+reason+", "+w+"x"+h+", "+mb(b.size)+")");
+  refreshAI();
+}
+function ifdEntry(v,ifd,tag,le){
+  if(ifd+2>v.byteLength)return -1;
+  var n=v.getUint16(ifd,le);
+  for(var i=0;i<n;i++){var e=ifd+2+i*12;if(e+12>v.byteLength)return -1;if(v.getUint16(e,le)===tag)return e;}
+  return -1;
+}
+function exifTime(file){
+  return file.slice(0,262144).arrayBuffer().then(function(buf){
+    var v=new DataView(buf);
+    if(v.byteLength<12||v.getUint16(0)!==0xFFD8)return null;
+    var o=2;
+    while(o+10<v.byteLength){
+      var marker=v.getUint16(o);
+      if((marker&0xFF00)!==0xFF00)break;
+      var len=v.getUint16(o+2);
+      if(marker===0xFFE1&&v.getUint32(o+4)===0x45786966){
+        var tiff=o+10,le=v.getUint16(tiff)===0x4949;
+        var ifd0=tiff+v.getUint32(tiff+4,le),e=-1;
+        var ptr=ifdEntry(v,ifd0,0x8769,le);
+        if(ptr>=0)e=ifdEntry(v,tiff+v.getUint32(ptr+8,le),0x9003,le);
+        if(e<0)e=ifdEntry(v,ifd0,0x0132,le);
+        if(e<0)return null;
+        var so=tiff+v.getUint32(e+8,le),s="";
+        if(so+19>v.byteLength)return null;
+        for(var i=0;i<19;i++)s+=String.fromCharCode(v.getUint8(so+i));
+        var m=/^(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)$/.exec(s);
+        if(!m)return null;
+        var d=new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6]);
+        return isNaN(d.getTime())?null:d;
+      }
+      o+=2+len;
+    }
+    return null;
+  }).catch(function(){return null;});
+}
+function loadImage(file){
+  return new Promise(function(res,rej){
+    var img=new Image(),url=URL.createObjectURL(file);
+    img.onload=function(){res(img);};
+    img.onerror=function(){URL.revokeObjectURL(url);rej(new Error("이미지를 열 수 없음"));};
+    img.src=url;
+  });
+}
+async function importPhotos(files){
+  var list=Array.prototype.slice.call(files||[]);
+  if(!list.length)return;
+  log("사진함에서 "+list.length+"장 선택");
+  for(var i=0;i<list.length;i++){
+    var f=list[i];
+    try{
+      var when=await exifTime(f),src="사진에 기록된 시각";
+      if(!when&&f.lastModified){when=new Date(f.lastModified);src="파일 시각, 부정확할 수 있음";}
+      var img=await loadImage(f);
+      var w=img.naturalWidth,h=img.naturalHeight,s=Math.min(1,1600/Math.max(w,h));
+      var c=document.createElement("canvas");c.width=Math.round(w*s);c.height=Math.round(h*s);
+      c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+      URL.revokeObjectURL(img.src);
+      var b=await new Promise(function(r){c.toBlob(r,"image/jpeg",0.8);});
+      var t=null,note="촬영 시각 모름";
+      if(when){
+        note="촬영 "+pad(when.getHours())+":"+pad(when.getMinutes())+":"+pad(when.getSeconds())+" ("+src+")";
+        var dur=recording?(Date.now()-recStart)/1000:recDur;
+        if(recStart&&dur>0){
+          var off=(when.getTime()-recStart)/1000;
+          if(off>=0&&off<=dur){t=off;note+=" → 녹음 "+mmss(off)+" 지점에 배치";}
+          else note+=", 녹음 시간대 밖";
+        }
+      }
+      addPhoto(b,t,"사진함, "+note,c.width,c.height,true);
+    }catch(e){log("사진 가져오기 실패 ("+(f.name||"이름 없음")+"): "+(e.message||e));}
+  }
+  setState("s2","사진 "+photos.length+"장 준비됨"+(audioBlob&&audioBlob.size?" · 녹음 "+mmss(recDur):" · 녹음 없음"),"ok");
 }
 
 async function lockScreen(){
@@ -298,7 +378,7 @@ function finishRec(){
   setState("s2","녹음 완료 "+mmss(recDur)+" · "+mb(audioBlob.size)+" · 사진 "+photos.length+"장. 아래에서 들어 보세요.",audioBlob.size?"ok":"bad");
   log("시험 2 결과: "+results.t2);
   if(audioBlob.size){var p=$("player");p.src=URL.createObjectURL(audioBlob);p.hidden=false;}
-  $("btnAI").disabled=!audioBlob.size;
+  refreshAI();
 }
 
 function getKey(){return $("key").value.trim();}
@@ -351,7 +431,8 @@ var PROMPT=[
 "- 음성에서 실제로 말했거나 사진에서 확인되는 내용만 쓰세요. 말하지 않은 분량이나 시간은 지어내지 말고 amount를 빈 문자열로 두고 questions에 물어볼 내용을 적으세요.",
 "- 요리와 관계없는 잡담은 빼세요.",
 "- 각 단계에 가장 잘 맞는 사진이 있으면 그 사진 번호를 photo에 넣고, 없으면 null로 두세요. 흐리거나 아무것도 안 보이는 사진은 쓰지 마세요.",
-"- 음성이 거의 없거나 요리 내용이 아니면 title을 \"내용 부족\"으로 하고 questions에 이유를 적으세요.",
+"- 음성이 첨부되지 않았으면 사진에서 확인되는 내용만으로 정리하고 transcript는 빈 문자열로 두세요.",
+"- 음성과 사진 어느 쪽에서도 요리 내용을 알 수 없으면 title을 \"내용 부족\"으로 하고 questions에 이유를 적으세요.",
 "아래 JSON 형식으로만 답하세요:",
 "{\"title\":\"요리 이름\",\"servings\":\"몇 인분\",\"totalTime\":\"총 조리 시간\",\"cover\":대표 사진 번호 또는 null,",
 "\"ingredients\":[{\"name\":\"재료\",\"amount\":\"분량\"}],",
@@ -363,24 +444,25 @@ async function makeRecipe(){
   var key=getKey(),model=$("model").value;
   if(!key){setState("s3","키를 먼저 입력하세요.","bad");return;}
   if(!model){setState("s3","모델 목록을 먼저 불러오세요.","bad");return;}
-  if(!audioBlob||!audioBlob.size){setState("s3","먼저 시험 2에서 녹음하세요.","bad");return;}
+  var hasAudio=!!(audioBlob&&audioBlob.size);
+  if(!hasAudio&&!photos.length){setState("s3","먼저 시험 2에서 녹음하거나 사진을 넣으세요.","bad");return;}
   try{localStorage.setItem("cook.key",key);localStorage.setItem("cook.model",model);}catch(e){}
   $("btnAI").disabled=true;$("recipe").textContent="";
   setState("s3","자료를 준비하는 중…");
   var t0=Date.now();
   try{
     var sel=pickPhotos();
-    var audioB64=await toB64(audioBlob);
+    var audioB64=hasAudio?await toB64(audioBlob):"";
     var total=audioB64.length;
-    var parts=[{text:PROMPT+"\n\n녹음 길이: "+mmss(recDur)+"\n사진 목록:\n"+(sel.length?sel.map(function(s){
-      return "사진 "+s.n+": "+(s.p.t==null?"녹음 전후에 촬영":"녹음 시작 후 "+mmss(s.p.t));}).join("\n"):"(사진 없음)")}];
-    parts.push({inlineData:{mimeType:geminiMime(audioBlob.type),data:audioB64}});
+    var parts=[{text:PROMPT+"\n\n"+(hasAudio?"녹음 길이: "+mmss(recDur):"음성: 첨부되지 않음")+"\n사진 목록:\n"+(sel.length?sel.map(function(s){
+      return "사진 "+s.n+": "+(s.p.t!=null?"녹음 시작 후 "+mmss(s.p.t):(s.p.picked?"사진함에서 가져옴, 녹음과의 시간 관계 모름":"녹음 전후에 촬영"));}).join("\n"):"(사진 없음)")}];
+    if(hasAudio)parts.push({inlineData:{mimeType:geminiMime(audioBlob.type),data:audioB64}});
     for(var i=0;i<sel.length;i++){
       var b=await toB64(sel[i].p.blob);total+=b.length;
       parts.push({text:"사진 "+sel[i].n});
       parts.push({inlineData:{mimeType:"image/jpeg",data:b}});
     }
-    log("전송 준비: 음성 "+mb(audioBlob.size)+", 사진 "+sel.length+"장, 요청 크기 약 "+mb(total)+", 모델 "+model);
+    log("전송 준비: 음성 "+(hasAudio?mb(audioBlob.size):"없음")+", 사진 "+sel.length+"장, 요청 크기 약 "+mb(total)+", 모델 "+model);
     if(total>MAX_REQUEST_B64)throw new Error("요청이 너무 큽니다("+mb(total)+"). 한 번에 보낼 수 있는 크기는 약 19MB입니다.");
     setState("s3","Gemini가 정리하는 중… ("+mb(total)+" 전송)");
     var r=await fetch(BASE+"/models/"+encodeURIComponent(model)+":generateContent",{
@@ -467,6 +549,8 @@ $("btnMedia").addEventListener("click",startMedia);
 $("btnRec").addEventListener("click",function(){if(recording)stopRec();else startRec();});
 $("btnShot").addEventListener("click",function(){capture("버튼");});
 video.addEventListener("click",function(){capture("두드림");});
+$("btnPick").addEventListener("click",function(){$("filePick").click();});
+$("filePick").addEventListener("change",function(){var fs=this.files;importPhotos(fs).then(function(){$("filePick").value="";});});
 $("btnModels").addEventListener("click",loadModels);
 $("btnAI").addEventListener("click",makeRecipe);
 $("btnCopy").addEventListener("click",copyResults);
