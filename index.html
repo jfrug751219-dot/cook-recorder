@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="요리 기록">
+<meta name="theme-color" content="#d85a30">
+<title>요리 기록 시험</title>
+<style>
+:root{--bg:#f6f4ee;--card:#fff;--text:#22211f;--sub:#6b6a65;--line:#dcd9cf;--accent:#d85a30;--on-accent:#fff;--ok:#2f7d32;--bad:#c62828;--warn-bg:#fdf1d8;--warn:#7a4b05;--dark:#22211f}
+@media (prefers-color-scheme:dark){:root{--bg:#171715;--card:#242422;--text:#f1efe8;--sub:#aaa89f;--line:#3d3c38;--ok:#7fd083;--bad:#ff8a80;--warn-bg:#3d2c08;--warn:#f6cf82;--dark:#000}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;padding:16px 16px calc(40px + env(safe-area-inset-bottom));-webkit-text-size-adjust:100%}
+main{max-width:640px;margin:0 auto}
+h1{font-size:22px;margin:4px 0 2px}
+h2{font-size:18px;margin:0 0 8px}
+h3{font-size:16px;margin:16px 0 4px}
+p{margin:6px 0}
+.sub{color:var(--sub);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin:14px 0}
+button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:12px;padding:14px 16px;min-height:52px;width:100%;margin:6px 0;touch-action:manipulation}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+button.stop{background:var(--bad);border-color:var(--bad);color:#fff}
+button:disabled{opacity:.45}
+input,select{font:inherit;width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--text);margin:4px 0 8px}
+label{font-size:14px;color:var(--sub)}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.videoWrap{position:relative;background:var(--dark);border-radius:12px;overflow:hidden;aspect-ratio:4/3;margin:8px 0}
+video{width:100%;height:100%;object-fit:cover;display:block}
+.flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+.badge{position:absolute;left:10px;top:10px;background:rgba(0,0,0,.6);color:#fff;border-radius:8px;padding:2px 10px;font-variant-numeric:tabular-nums;font-size:15px}
+.hint{position:absolute;right:10px;bottom:10px;background:rgba(0,0,0,.6);color:#fff;border-radius:8px;padding:2px 10px;font-size:13px}
+.meter{height:10px;background:var(--line);border-radius:5px;overflow:hidden;margin:8px 0}
+.meter>div{height:100%;width:0;background:var(--ok)}
+.state{font-weight:600;margin:6px 0}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+.thumbs{display:flex;gap:6px;overflow-x:auto;padding:4px 0}
+.thumbs img{height:72px;border-radius:8px;flex:none}
+pre{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-all;max-height:240px;overflow:auto;margin:8px 0}
+ul.env{list-style:none;padding:0;margin:0;font-size:14px}
+ul.env li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:5px 0}
+ul.env li span:last-child{text-align:right;word-break:break-all}
+.warn{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14px;margin:8px 0}
+.recipe h3{font-size:20px;margin-top:4px}
+.recipe img{width:100%;border-radius:10px;margin:6px 0}
+.recipe ol,.recipe ul{padding-left:22px;margin:6px 0}
+.recipe li{margin:6px 0}
+audio{width:100%;margin:8px 0}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<h1>요리 기록 시험</h1>
+<p class="sub">시험판 v0.01 · 아이폰에서 카메라, 녹음, AI 정리가 되는지 확인하는 페이지</p>
+
+<section class="card">
+  <h2>이 폰의 지원 상태</h2>
+  <ul class="env" id="env"></ul>
+  <div class="warn" id="installTip" hidden>사파리 아래쪽 공유 버튼에서 "홈 화면에 추가"를 누른 뒤, 홈 화면 아이콘으로 다시 열어 주세요. 그 상태로 시험해야 실제 앱과 같은 조건입니다.</div>
+</section>
+
+<section class="card">
+  <h2>시험 1 · 카메라와 마이크</h2>
+  <p class="sub">버튼을 누르면 권한을 묻습니다. 둘 다 허용해 주세요.</p>
+  <button class="primary" id="btnMedia">카메라와 마이크 켜기</button>
+  <div class="videoWrap">
+    <video id="video" playsinline muted autoplay></video>
+    <div class="flash" id="flash"></div>
+    <div class="badge" id="timer" hidden>00:00</div>
+    <div class="hint" id="tapHint" hidden>화면을 두드리면 촬영</div>
+  </div>
+  <label>마이크 음량 (말하면 움직여야 정상)</label>
+  <div class="meter"><div id="level"></div></div>
+  <p class="state" id="s1">아직 시험하지 않음</p>
+</section>
+
+<section class="card">
+  <h2>시험 2 · 요리하는 동안 녹음</h2>
+  <p class="sub">녹음을 시작한 뒤 폰을 세워 두고 평소처럼 요리하면서 말해 보세요. 처음에는 1~2분만, 잘 되면 30분을 시험합니다.</p>
+  <label for="autoSec">자동 사진 간격</label>
+  <select id="autoSec">
+    <option value="0">끄기 (화면을 두드릴 때만)</option>
+    <option value="15">15초마다</option>
+    <option value="30" selected>30초마다</option>
+    <option value="60">1분마다</option>
+  </select>
+  <button class="primary" id="btnRec" disabled>녹음 시작</button>
+  <button id="btnShot" disabled>사진 한 장 찍기</button>
+  <p class="state" id="s2">아직 시험하지 않음</p>
+  <audio id="player" controls hidden></audio>
+  <div class="thumbs" id="thumbs"></div>
+</section>
+
+<section class="card">
+  <h2>시험 3 · Gemini로 레시피 만들기</h2>
+  <p class="sub">키는 이 폰에만 저장됩니다. 키가 없으면 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>에서 만들 수 있습니다.</p>
+  <label for="key">Gemini API 키</label>
+  <input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza...">
+  <button id="btnModels">키 확인하고 모델 목록 불러오기</button>
+  <label for="model">모델</label>
+  <select id="model"></select>
+  <button class="primary" id="btnAI" disabled>녹음과 사진으로 레시피 만들기</button>
+  <p class="state" id="s3">아직 시험하지 않음</p>
+  <div class="recipe" id="recipe"></div>
+</section>
+
+<section class="card">
+  <h2>결과 전달</h2>
+  <p class="sub">시험이 끝나면 아래 버튼으로 결과를 복사해서 Claude에게 붙여 넣어 주세요.</p>
+  <button id="btnCopy">시험 결과 복사</button>
+  <pre id="log"></pre>
+</section>
+</main>
+
+<script>
+(function(){
+"use strict";
+var VERSION="v0.01";
+var BASE="https://generativelanguage.googleapis.com/v1beta";
+var FALLBACK_MODELS=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-4-hydrogen"];
+var MAX_PHOTOS=16, MAX_REQUEST_B64=19*1024*1024;
+
+var $=function(id){return document.getElementById(id);};
+var video=$("video");
+var stream=null, audioCtx=null, analyser=null, recorder=null, chunks=[], recStart=0, recording=false;
+var audioBlob=null, recDur=0, recMime="", photos=[], wakeLock=null, autoTimer=null, tickTimer=null;
+var logs=[], results={t1:"미시험",t2:"미시험",t3:"미시험"}, pageStart=Date.now();
+
+function pad(n){return (n<10?"0":"")+n;}
+function mmss(sec){sec=Math.max(0,Math.round(sec));return pad(Math.floor(sec/60))+":"+pad(sec%60);}
+function mb(bytes){return (bytes/1048576).toFixed(2)+"MB";}
+function log(msg){
+  var d=new Date();
+  var line=pad(d.getHours())+":"+pad(d.getMinutes())+":"+pad(d.getSeconds())+(recording?" [녹음 "+mmss((Date.now()-recStart)/1000)+"]":"")+" "+msg;
+  logs.push(line);
+  $("log").textContent=logs.join("\n");
+  $("log").scrollTop=$("log").scrollHeight;
+}
+function setState(id,text,cls){var el=$(id);el.textContent=text;el.className="state"+(cls?" "+cls:"");}
+
+function pickMime(){
+  if(!window.MediaRecorder)return "";
+  var c=["audio/mp4","audio/webm;codecs=opus","audio/webm"];
+  for(var i=0;i<c.length;i++){try{if(MediaRecorder.isTypeSupported(c[i]))return c[i];}catch(e){}}
+  return "";
+}
+function geminiMime(m){
+  m=(m||"").toLowerCase();
+  if(m.indexOf("mp4")>=0||m.indexOf("m4a")>=0||m.indexOf("aac")>=0)return "audio/m4a";
+  if(m.indexOf("webm")>=0)return "audio/webm";
+  if(m.indexOf("ogg")>=0)return "audio/ogg";
+  return "audio/m4a";
+}
+
+function showEnv(){
+  var standalone=(window.navigator.standalone===true)||(window.matchMedia&&window.matchMedia("(display-mode: standalone)").matches);
+  var rows=[
+    ["시험판",VERSION],
+    ["홈 화면 앱으로 실행",standalone?"예":"아니오"],
+    ["보안 연결(https)",window.isSecureContext?"예":"아니오"],
+    ["카메라·마이크",(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)?"지원":"미지원"],
+    ["녹음",window.MediaRecorder?"지원 ("+(pickMime()||"형식 불명")+")":"미지원"],
+    ["화면 켜짐 유지",("wakeLock" in navigator)?"지원":"미지원"],
+    ["폰 받아쓰기(참고)",(window.SpeechRecognition||window.webkitSpeechRecognition)?"지원":"미지원"],
+    ["브라우저",navigator.userAgent]
+  ];
+  var ul=$("env");ul.textContent="";
+  rows.forEach(function(r){
+    var li=document.createElement("li"),a=document.createElement("span"),b=document.createElement("span");
+    a.textContent=r[0];b.textContent=r[1];li.appendChild(a);li.appendChild(b);ul.appendChild(li);
+    log(r[0]+": "+r[1]);
+  });
+  var isIOS=/iPhone|iPad|iPod/.test(navigator.userAgent);
+  if(isIOS&&!standalone)$("installTip").hidden=false;
+}
+
+function startMeter(){
+  try{
+    var AC=window.AudioContext||window.webkitAudioContext;
+    audioCtx=new AC();
+    var src=audioCtx.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+    analyser=audioCtx.createAnalyser();analyser.fftSize=512;src.connect(analyser);
+    var buf=new Uint8Array(analyser.fftSize), heard=false;
+    (function loop(){
+      if(!analyser)return;
+      analyser.getByteTimeDomainData(buf);
+      var sum=0;for(var i=0;i<buf.length;i++){var v=(buf[i]-128)/128;sum+=v*v;}
+      var rms=Math.sqrt(sum/buf.length);
+      $("level").style.width=Math.min(100,Math.round(rms*400))+"%";
+      if(!heard&&rms>0.05){heard=true;log("마이크에 소리가 들어옴");}
+      requestAnimationFrame(loop);
+    })();
+  }catch(e){log("음량 표시 실패: "+e.message);}
+}
+
+async function startMedia(){
+  $("btnMedia").disabled=true;
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({
+      audio:true,
+      video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}}
+    });
+    video.srcObject=stream;
+    try{await video.play();}catch(e){log("영상 재생 대기: "+e.message);}
+    stream.getTracks().forEach(function(t){
+      var name=t.kind==="audio"?"마이크":"카메라";
+      t.addEventListener("ended",function(){log(name+" 연결이 끝남(ended)");});
+      t.addEventListener("mute",function(){log(name+" 일시 중단(mute)");});
+      t.addEventListener("unmute",function(){log(name+" 다시 연결(unmute)");});
+    });
+    startMeter();
+    var vs=stream.getVideoTracks()[0].getSettings();
+    results.t1="성공 (카메라 "+(vs.width||"?")+"x"+(vs.height||"?")+")";
+    setState("s1","카메라와 마이크가 함께 켜졌습니다.","ok");
+    log("시험 1 성공: 카메라 "+(vs.width||"?")+"x"+(vs.height||"?"));
+    $("btnRec").disabled=false;$("btnShot").disabled=false;$("tapHint").hidden=false;
+    $("btnMedia").textContent="켜짐";
+  }catch(e){
+    results.t1="실패: "+e.name+" "+e.message;
+    setState("s1","실패: "+e.name+" · "+e.message,"bad");
+    log("시험 1 실패: "+e.name+" "+e.message);
+    $("btnMedia").disabled=false;
+  }
+}
+
+function capture(reason){
+  if(!stream||!video.videoWidth)return;
+  var w=video.videoWidth,h=video.videoHeight,s=Math.min(1,1600/Math.max(w,h));
+  var c=document.createElement("canvas");c.width=Math.round(w*s);c.height=Math.round(h*s);
+  c.getContext("2d").drawImage(video,0,0,c.width,c.height);
+  var t=recording?(Date.now()-recStart)/1000:null;
+  c.toBlob(function(b){
+    if(!b){log("사진 저장 실패");return;}
+    var p={t:t,blob:b,url:URL.createObjectURL(b)};photos.push(p);
+    var img=document.createElement("img");img.src=p.url;img.alt="사진 "+photos.length;
+    $("thumbs").appendChild(img);$("thumbs").scrollLeft=$("thumbs").scrollWidth;
+    log("사진 "+photos.length+" ("+reason+", "+c.width+"x"+c.height+", "+mb(b.size)+")");
+  },"image/jpeg",0.8);
+  var f=$("flash");f.style.opacity=".8";setTimeout(function(){f.style.opacity="0";},80);
+}
+
+async function lockScreen(){
+  if(!("wakeLock" in navigator)){log("화면 켜짐 유지: 이 폰에서 미지원");return;}
+  try{
+    wakeLock=await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release",function(){log("화면 켜짐 유지가 해제됨");});
+    log("화면 켜짐 유지 시작");
+  }catch(e){log("화면 켜짐 유지 실패: "+e.name+" "+e.message);}
+}
+
+function startRec(){
+  recMime=pickMime();chunks=[];audioBlob=null;
+  try{
+    var opt={audioBitsPerSecond:32000};if(recMime)opt.mimeType=recMime;
+    recorder=new MediaRecorder(new MediaStream(stream.getAudioTracks()),opt);
+  }catch(e){
+    results.t2="실패: "+e.name+" "+e.message;
+    setState("s2","녹음을 시작하지 못했습니다: "+e.message,"bad");log("녹음 시작 실패: "+e.name+" "+e.message);return;
+  }
+  recorder.ondataavailable=function(ev){if(ev.data&&ev.data.size)chunks.push(ev.data);};
+  recorder.onerror=function(ev){log("녹음 오류: "+((ev.error&&ev.error.message)||"알 수 없음"));};
+  recorder.onstop=finishRec;
+  recorder.start(10000);
+  recStart=Date.now();recording=true;
+  log("녹음 시작 (형식 "+(recorder.mimeType||recMime||"기본")+")");
+  lockScreen();
+  var sec=parseInt($("autoSec").value,10);
+  if(sec>0)autoTimer=setInterval(function(){capture("자동");},sec*1000);
+  $("timer").hidden=false;
+  tickTimer=setInterval(function(){
+    var el=(Date.now()-recStart)/1000;$("timer").textContent="● "+mmss(el);
+    var size=chunks.reduce(function(a,b){return a+b.size;},0);
+    setState("s2","녹음 중 "+mmss(el)+" · 음성 "+mb(size)+" · 사진 "+photos.length+"장");
+  },1000);
+  $("btnRec").textContent="녹음 끝내기";$("btnRec").className="stop";$("autoSec").disabled=true;
+  $("btnAI").disabled=true;
+}
+function stopRec(){
+  recDur=(Date.now()-recStart)/1000;
+  clearInterval(autoTimer);clearInterval(tickTimer);autoTimer=tickTimer=null;
+  try{recorder.stop();}catch(e){log("녹음 종료 오류: "+e.message);finishRec();}
+  if(wakeLock){try{wakeLock.release();}catch(e){}wakeLock=null;}
+}
+function finishRec(){
+  if(!recording)return;
+  recording=false;
+  var type=(recorder&&recorder.mimeType)||recMime||"audio/mp4";
+  audioBlob=new Blob(chunks,{type:type});
+  $("timer").hidden=true;
+  $("btnRec").textContent="다시 녹음";$("btnRec").className="primary";$("autoSec").disabled=false;
+  var kbps=recDur>0?Math.round(audioBlob.size*8/recDur/1000):0;
+  var est30=mb(audioBlob.size/Math.max(recDur,1)*1800);
+  results.t2="녹음 "+mmss(recDur)+", "+mb(audioBlob.size)+" ("+kbps+"kbps, 30분이면 약 "+est30+"), 형식 "+type+", 사진 "+photos.length+"장";
+  setState("s2","녹음 완료 "+mmss(recDur)+" · "+mb(audioBlob.size)+" · 사진 "+photos.length+"장. 아래에서 들어 보세요.",audioBlob.size?"ok":"bad");
+  log("시험 2 결과: "+results.t2);
+  if(audioBlob.size){var p=$("player");p.src=URL.createObjectURL(audioBlob);p.hidden=false;}
+  $("btnAI").disabled=!audioBlob.size;
+}
+
+function getKey(){return $("key").value.trim();}
+function fillModels(list){
+  var sel=$("model");sel.textContent="";
+  list.forEach(function(m){var o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);});
+  for(var i=0;i<FALLBACK_MODELS.length;i++){if(list.indexOf(FALLBACK_MODELS[i])>=0){sel.value=FALLBACK_MODELS[i];break;}}
+  try{var saved=localStorage.getItem("cook.model");if(saved&&list.indexOf(saved)>=0)sel.value=saved;}catch(e){}
+}
+async function loadModels(){
+  var key=getKey();
+  if(!key){setState("s3","키를 먼저 입력하세요.","bad");return;}
+  try{localStorage.setItem("cook.key",key);}catch(e){}
+  setState("s3","모델 목록을 불러오는 중…");
+  try{
+    var r=await fetch(BASE+"/models?pageSize=1000",{headers:{"x-goog-api-key":key}});
+    var j=await r.json();
+    if(!r.ok)throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
+    var all=(j.models||[]);
+    var usable=all.filter(function(m){return (m.supportedGenerationMethods||[]).indexOf("generateContent")>=0;});
+    if(!usable.length)usable=all;
+    var names=usable.map(function(m){return String(m.name||"").replace(/^models\//,"");})
+      .filter(function(n){return /^gemini/.test(n)&&!/tts|image|embedding|live|audio-dialog/.test(n);});
+    if(!names.length)names=FALLBACK_MODELS.slice();
+    fillModels(names);
+    setState("s3","키 확인 완료. 모델 "+names.length+"개를 불러왔습니다.","ok");
+    log("모델 목록 "+names.length+"개, 선택: "+$("model").value);
+  }catch(e){
+    setState("s3","키 확인 실패: "+e.message,"bad");log("모델 목록 실패: "+e.message);
+  }
+}
+
+function toB64(blob){
+  return new Promise(function(res,rej){
+    var fr=new FileReader();
+    fr.onload=function(){var s=String(fr.result);res(s.slice(s.indexOf(",")+1));};
+    fr.onerror=function(){rej(fr.error||new Error("파일 읽기 실패"));};
+    fr.readAsDataURL(blob);
+  });
+}
+function pickPhotos(){
+  if(photos.length<=MAX_PHOTOS)return photos.map(function(p,i){return {p:p,n:i+1};});
+  var out=[];for(var i=0;i<MAX_PHOTOS;i++){var k=Math.round(i*(photos.length-1)/(MAX_PHOTOS-1));out.push({p:photos[k],n:k+1});}
+  return out;
+}
+var PROMPT=[
+"첨부한 음성은 한 사람이 집에서 요리하면서 말한 것을 녹음한 것이고, 사진은 요리 도중에 찍은 것입니다.",
+"음성과 사진을 바탕으로 요리책에 실을 레시피를 한국어로 정리하세요.",
+"규칙:",
+"- 음성에서 실제로 말했거나 사진에서 확인되는 내용만 쓰세요. 말하지 않은 분량이나 시간은 지어내지 말고 amount를 빈 문자열로 두고 questions에 물어볼 내용을 적으세요.",
+"- 요리와 관계없는 잡담은 빼세요.",
+"- 각 단계에 가장 잘 맞는 사진이 있으면 그 사진 번호를 photo에 넣고, 없으면 null로 두세요. 흐리거나 아무것도 안 보이는 사진은 쓰지 마세요.",
+"- 음성이 거의 없거나 요리 내용이 아니면 title을 \"내용 부족\"으로 하고 questions에 이유를 적으세요.",
+"아래 JSON 형식으로만 답하세요:",
+"{\"title\":\"요리 이름\",\"servings\":\"몇 인분\",\"totalTime\":\"총 조리 시간\",\"cover\":대표 사진 번호 또는 null,",
+"\"ingredients\":[{\"name\":\"재료\",\"amount\":\"분량\"}],",
+"\"steps\":[{\"text\":\"조리 설명\",\"time\":\"음성에서 이 단계가 시작된 시각 mm:ss\",\"photo\":사진 번호 또는 null}],",
+"\"tips\":[\"요령\"],\"questions\":[\"사용자에게 확인할 내용\"],\"transcript\":\"음성을 받아쓴 글 전체\"}"
+].join("\n");
+
+async function makeRecipe(){
+  var key=getKey(),model=$("model").value;
+  if(!key){setState("s3","키를 먼저 입력하세요.","bad");return;}
+  if(!model){setState("s3","모델 목록을 먼저 불러오세요.","bad");return;}
+  if(!audioBlob||!audioBlob.size){setState("s3","먼저 시험 2에서 녹음하세요.","bad");return;}
+  try{localStorage.setItem("cook.key",key);localStorage.setItem("cook.model",model);}catch(e){}
+  $("btnAI").disabled=true;$("recipe").textContent="";
+  setState("s3","자료를 준비하는 중…");
+  var t0=Date.now();
+  try{
+    var sel=pickPhotos();
+    var audioB64=await toB64(audioBlob);
+    var total=audioB64.length;
+    var parts=[{text:PROMPT+"\n\n녹음 길이: "+mmss(recDur)+"\n사진 목록:\n"+(sel.length?sel.map(function(s){
+      return "사진 "+s.n+": "+(s.p.t==null?"녹음 전후에 촬영":"녹음 시작 후 "+mmss(s.p.t));}).join("\n"):"(사진 없음)")}];
+    parts.push({inlineData:{mimeType:geminiMime(audioBlob.type),data:audioB64}});
+    for(var i=0;i<sel.length;i++){
+      var b=await toB64(sel[i].p.blob);total+=b.length;
+      parts.push({text:"사진 "+sel[i].n});
+      parts.push({inlineData:{mimeType:"image/jpeg",data:b}});
+    }
+    log("전송 준비: 음성 "+mb(audioBlob.size)+", 사진 "+sel.length+"장, 요청 크기 약 "+mb(total)+", 모델 "+model);
+    if(total>MAX_REQUEST_B64)throw new Error("요청이 너무 큽니다("+mb(total)+"). 한 번에 보낼 수 있는 크기는 약 19MB입니다.");
+    setState("s3","Gemini가 정리하는 중… ("+mb(total)+" 전송)");
+    var r=await fetch(BASE+"/models/"+encodeURIComponent(model)+":generateContent",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","x-goog-api-key":key},
+      body:JSON.stringify({contents:[{role:"user",parts:parts}],generationConfig:{responseMimeType:"application/json"}})
+    });
+    var j=await r.json();
+    if(!r.ok)throw new Error((j.error&&j.error.message)||("HTTP "+r.status));
+    var cand=(j.candidates||[])[0];
+    if(!cand)throw new Error("응답이 비어 있습니다"+(j.promptFeedback&&j.promptFeedback.blockReason?" (차단: "+j.promptFeedback.blockReason+")":""));
+    var text=((cand.content&&cand.content.parts)||[]).map(function(p){return p.text||"";}).join("");
+    var secs=((Date.now()-t0)/1000).toFixed(1);
+    var u=j.usageMetadata||{};
+    var usage="입력 "+(u.promptTokenCount||"?")+" / 출력 "+(u.candidatesTokenCount||"?")+" 토큰";
+    var data=null;
+    try{data=JSON.parse(text.replace(/^\s*```(?:json)?/i,"").replace(/```\s*$/,""));}catch(e){}
+    if(data&&typeof data==="object"){
+      renderRecipe(data);
+      results.t3="성공: \""+(data.title||"")+"\" 재료 "+((data.ingredients||[]).length)+"개, 단계 "+((data.steps||[]).length)+"개, "+secs+"초, "+usage+", 모델 "+model+", 종료 "+(cand.finishReason||"?");
+      setState("s3","레시피가 만들어졌습니다. ("+secs+"초, "+usage+")","ok");
+    }else{
+      var pre=document.createElement("pre");pre.textContent=text||"(빈 응답)";$("recipe").appendChild(pre);
+      results.t3="응답은 왔으나 형식이 다름: "+secs+"초, "+usage+", 모델 "+model+", 종료 "+(cand.finishReason||"?");
+      setState("s3","응답은 왔지만 형식이 예상과 다릅니다. 아래 원문을 확인하세요.","bad");
+    }
+    log("시험 3 결과: "+results.t3);
+  }catch(e){
+    var msg=e.message||String(e);
+    if(e.name==="TypeError")msg+=" (네트워크 차단 또는 브라우저 직접 호출 불가 가능성)";
+    results.t3="실패: "+msg;
+    setState("s3","실패: "+msg,"bad");log("시험 3 실패: "+e.name+" "+msg);
+  }
+  $("btnAI").disabled=false;
+}
+
+function el(tag,text){var e=document.createElement(tag);if(text!=null)e.textContent=text;return e;}
+function photoImg(n){
+  var k=parseInt(n,10);if(!k||!photos[k-1])return null;
+  var img=document.createElement("img");img.src=photos[k-1].url;img.alt="사진 "+k;return img;
+}
+function renderRecipe(d){
+  var box=$("recipe");box.textContent="";
+  var cover=photoImg(d.cover);if(cover)box.appendChild(cover);
+  box.appendChild(el("h3",d.title||"(제목 없음)"));
+  var meta=[d.servings,d.totalTime].filter(Boolean).join(" · ");if(meta)box.appendChild(el("p",meta));
+  if((d.ingredients||[]).length){
+    box.appendChild(el("h3","재료"));var ul=el("ul");
+    d.ingredients.forEach(function(i){ul.appendChild(el("li",(i.name||"")+(i.amount?" "+i.amount:" (분량 확인 필요)")));});box.appendChild(ul);
+  }
+  if((d.steps||[]).length){
+    box.appendChild(el("h3","만드는 법"));var ol=el("ol");
+    d.steps.forEach(function(s){
+      var li=el("li",(s.text||"")+(s.time?" ["+s.time+"]":""));var im=photoImg(s.photo);if(im)li.appendChild(im);ol.appendChild(li);
+    });box.appendChild(ol);
+  }
+  if((d.tips||[]).length){box.appendChild(el("h3","요령"));var t=el("ul");d.tips.forEach(function(x){t.appendChild(el("li",x));});box.appendChild(t);}
+  if((d.questions||[]).length){
+    var w=el("div");w.className="warn";w.appendChild(el("strong","확인 필요"));
+    var q=el("ul");d.questions.forEach(function(x){q.appendChild(el("li",x));});w.appendChild(q);box.appendChild(w);
+  }
+  if(d.transcript){box.appendChild(el("h3","받아쓴 글"));box.appendChild(el("pre",d.transcript));}
+}
+
+function copyResults(){
+  var text=["[요리 기록 시험 "+VERSION+"]","시험 1 카메라·마이크: "+results.t1,"시험 2 녹음: "+results.t2,"시험 3 Gemini: "+results.t3,"","기록:"].concat(logs).join("\n");
+  function done(){$("btnCopy").textContent="복사됨";setTimeout(function(){$("btnCopy").textContent="시험 결과 복사";},1500);}
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fallback);}else fallback();
+  function fallback(){
+    var ta=document.createElement("textarea");ta.value=text;document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");done();}catch(e){}
+    document.body.removeChild(ta);
+  }
+}
+
+document.addEventListener("visibilitychange",function(){
+  log(document.hidden?"화면이 가려짐 (다른 앱이나 잠금)":"화면으로 돌아옴");
+  if(!document.hidden&&recording)lockScreen();
+});
+window.addEventListener("error",function(e){log("페이지 오류: "+e.message);});
+window.addEventListener("unhandledrejection",function(e){log("처리 안 된 오류: "+((e.reason&&e.reason.message)||e.reason));});
+
+$("btnMedia").addEventListener("click",startMedia);
+$("btnRec").addEventListener("click",function(){if(recording)stopRec();else startRec();});
+$("btnShot").addEventListener("click",function(){capture("버튼");});
+video.addEventListener("click",function(){capture("두드림");});
+$("btnModels").addEventListener("click",loadModels);
+$("btnAI").addEventListener("click",makeRecipe);
+$("btnCopy").addEventListener("click",copyResults);
+
+try{var k=localStorage.getItem("cook.key");if(k)$("key").value=k;}catch(e){}
+fillModels(FALLBACK_MODELS.slice());
+showEnv();
+})();
+</script>
+</body>
+</html>
