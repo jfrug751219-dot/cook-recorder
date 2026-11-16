@@ -55,13 +55,16 @@ audio{width:100%;margin:8px 0}
 .tlh button{width:44px;min-height:40px;padding:0;margin:0;flex:none}
 .tli textarea{display:block;width:100%;font:inherit;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--card);color:var(--text);resize:none;min-height:52px;overflow:hidden}
 .tli img{width:100%;border-radius:10px;display:block}
+.gap{display:flex;align-items:center;gap:6px;margin:-4px 0}
+.gap::before{content:"";flex:1;border-top:1px dashed var(--line)}
+.gap button{width:auto;min-width:44px;min-height:32px;padding:0 12px;margin:0;flex:none;font-size:14px;color:var(--sub);border-radius:16px}
 a{color:var(--accent)}
 </style>
 </head>
 <body>
 <main>
 <h1>요리 기록 시험</h1>
-<p class="sub">시험판 v0.03 · 아이폰에서 카메라, 녹음, AI 정리가 되는지 확인하는 페이지</p>
+<p class="sub">시험판 v0.04 · 아이폰에서 카메라, 녹음, AI 정리가 되는지 확인하는 페이지</p>
 
 <section class="card">
   <h2>이 폰의 지원 상태</h2>
@@ -118,7 +121,7 @@ a{color:var(--accent)}
 
 <section class="card">
   <h2>시험 4 · 타임라인과 레시피</h2>
-  <p class="sub">말한 내용과 사진이 시간순으로 놓입니다. 글은 눌러서 바로 고칠 수 있고, 화살표로 순서를 바꾸거나 ✕로 지울 수 있습니다. 녹음 없이 메모와 사진만으로도 만들 수 있습니다.</p>
+  <p class="sub">말한 내용과 사진이 시간순으로 놓입니다. 글은 눌러서 바로 고칠 수 있고, 화살표로 순서를 바꾸거나 ✕로 지울 수 있습니다. 항목 사이의 +를 누르면 그 자리에 글이나 사진을 넣습니다. 녹음 없이 메모와 사진만으로도 만들 수 있습니다.</p>
   <div id="tl"></div>
   <div class="row">
     <button id="btnAddNote">메모 추가</button>
@@ -140,7 +143,7 @@ a{color:var(--accent)}
 <script>
 (function(){
 "use strict";
-var VERSION="v0.03";
+var VERSION="v0.04";
 var BASE="https://generativelanguage.googleapis.com/v1beta";
 var FALLBACK_MODELS=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-4-hydrogen"];
 var MAX_REQUEST_B64=19*1024*1024;
@@ -150,7 +153,7 @@ var video=$("video");
 var stream=null, audioCtx=null, analyser=null, recorder=null, chunks=[], recStart=0, recording=false;
 var audioBlob=null, recDur=0, recMime="", photos=[], wakeLock=null, autoTimer=null, tickTimer=null;
 var logs=[], results={t1:"미시험",t2:"미시험",t3:"미시험",t4:"미시험"}, pageStart=Date.now();
-var tl=[], lastSent=[], idSeq=0;
+var tl=[], lastSent=[], idSeq=0, gapOpen=null, pickBefore=null;
 
 function pad(n){return (n<10?"0":"")+n;}
 function mmss(sec){sec=Math.max(0,Math.round(sec));return pad(Math.floor(sec/60))+":"+pad(sec%60);}
@@ -263,13 +266,13 @@ function refreshAI(){
   $("btnTL").disabled=recording||!(audioBlob&&audioBlob.size);
   $("btnAI").disabled=recording||!tl.length;
 }
-function addPhoto(b,t,reason,w,h,picked){
+function addPhoto(b,t,reason,w,h,picked,beforeId){
   if(!b){log("사진 저장 실패 ("+reason+")");return;}
   var p={t:t,blob:b,url:URL.createObjectURL(b),picked:!!picked};photos.push(p);
   var img=document.createElement("img");img.src=p.url;img.alt="사진 "+photos.length;
   $("thumbs").appendChild(img);$("thumbs").scrollLeft=$("thumbs").scrollWidth;
   log("사진 "+photos.length+" ("+reason+", "+w+"x"+h+", "+mb(b.size)+")");
-  insertItem({type:"photo",t:t,photo:p});
+  insertItem({type:"photo",t:beforeId!=null?null:t,photo:p},beforeId);
   renderTL();
 }
 function ifdEntry(v,ifd,tag,le){
@@ -315,7 +318,7 @@ function loadImage(file){
     img.src=url;
   });
 }
-async function importPhotos(files){
+async function importPhotos(files,beforeId){
   var list=Array.prototype.slice.call(files||[]);
   if(!list.length)return;
   log("사진함에서 "+list.length+"장 선택");
@@ -340,7 +343,8 @@ async function importPhotos(files){
           else note+=", 녹음 시간대 밖";
         }
       }
-      addPhoto(b,t,"사진함, "+note,c.width,c.height,true);
+      if(beforeId!=null)note+=", 고른 자리에 넣음";
+      addPhoto(b,t,"사진함, "+note,c.width,c.height,true,beforeId);
     }catch(e){log("사진 가져오기 실패 ("+(f.name||"이름 없음")+"): "+(e.message||e));}
   }
   setState("s2","사진 "+photos.length+"장 준비됨"+(audioBlob&&audioBlob.size?" · 녹음 "+mmss(recDur):" · 녹음 없음"),"ok");
@@ -498,8 +502,11 @@ async function callGemini(parts,stateId,label){
   throw lastErr||new Error("알 수 없는 오류");
 }
 
-function insertItem(item){
+function insertItem(item,beforeId){
   item.id=++idSeq;
+  if(beforeId!=null){
+    for(var k=0;k<tl.length;k++){if(tl[k].id===beforeId){tl.splice(k,0,item);return item;}}
+  }
   if(item.t!=null){
     for(var i=0;i<tl.length;i++){if(tl[i].t!=null&&tl[i].t>item.t){tl.splice(i,0,item);return item;}}
   }
@@ -515,6 +522,15 @@ function miniBtn(label,name,fn){var b=el("button",label);b.type="button";b.setAt
 function renderTL(focusId){
   var box=$("tl");box.textContent="";
   tl.forEach(function(item,i){
+    var gap=el("div");gap.className="gap";
+    if(gapOpen===item.id){
+      gap.appendChild(miniBtn("글","이 자리에 글 넣기",function(){gapOpen=null;var it=insertItem({type:"text",t:null,text:"",auto:false},item.id);renderTL(it.id);}));
+      gap.appendChild(miniBtn("사진","이 자리에 사진 넣기",function(){gapOpen=null;pickBefore=item.id;renderTL();$("filePick").click();}));
+      gap.appendChild(miniBtn("✕","닫기",function(){gapOpen=null;renderTL();}));
+    }else{
+      gap.appendChild(miniBtn("+","이 자리에 추가",function(){gapOpen=item.id;renderTL();}));
+    }
+    box.appendChild(gap);
     var row=el("div");row.className="tli";
     var head=el("div");head.className="tlh";
     head.appendChild(el("span",(item.t!=null?mmss(item.t):"시각 없음")+" · "+(item.type==="photo"?"사진":(item.auto?"받아쓴 글":"메모"))));
@@ -689,12 +705,12 @@ $("btnMedia").addEventListener("click",startMedia);
 $("btnRec").addEventListener("click",function(){if(recording)stopRec();else startRec();});
 $("btnShot").addEventListener("click",function(){capture("버튼");});
 video.addEventListener("click",function(){capture("두드림");});
-$("btnPick").addEventListener("click",function(){$("filePick").click();});
-$("filePick").addEventListener("change",function(){var fs=this.files;importPhotos(fs).then(function(){$("filePick").value="";});});
+$("btnPick").addEventListener("click",function(){pickBefore=null;$("filePick").click();});
+$("filePick").addEventListener("change",function(){var fs=this.files,at=pickBefore;pickBefore=null;importPhotos(fs,at).then(function(){$("filePick").value="";});});
 $("btnModels").addEventListener("click",loadModels);
 $("btnTL").addEventListener("click",buildTimeline);
 $("btnAddNote").addEventListener("click",addNote);
-$("btnAddPhoto").addEventListener("click",function(){$("filePick").click();});
+$("btnAddPhoto").addEventListener("click",function(){pickBefore=null;$("filePick").click();});
 $("btnAI").addEventListener("click",makeRecipe);
 $("btnCopy").addEventListener("click",copyResults);
 
