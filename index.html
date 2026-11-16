@@ -55,6 +55,7 @@ audio{width:100%;margin:8px 0}
 .tlh button{width:44px;min-height:40px;padding:0;margin:0;flex:none}
 .tli textarea{display:block;width:100%;font:inherit;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--card);color:var(--text);resize:none;min-height:52px;overflow:hidden}
 .tli img{width:100%;border-radius:10px;display:block}
+summary{font-size:14px;color:var(--sub);padding:8px 0;cursor:pointer}
 .gap{display:flex;align-items:center;gap:6px;margin:-4px 0}
 .gap::before{content:"";flex:1;border-top:1px dashed var(--line)}
 .gap button{width:auto;min-width:44px;min-height:32px;padding:0 12px;margin:0;flex:none;font-size:14px;color:var(--sub);border-radius:16px}
@@ -64,7 +65,7 @@ a{color:var(--accent)}
 <body>
 <main>
 <h1>요리 기록 시험</h1>
-<p class="sub">시험판 v0.04 · 아이폰에서 카메라, 녹음, AI 정리가 되는지 확인하는 페이지</p>
+<p class="sub">시험판 v0.05 · 아이폰에서 카메라, 녹음, AI 정리가 되는지 확인하는 페이지</p>
 
 <section class="card">
   <h2>이 폰의 지원 상태</h2>
@@ -109,12 +110,15 @@ a{color:var(--accent)}
 
 <section class="card">
   <h2>시험 3 · 녹음 받아쓰기</h2>
-  <p class="sub">키는 이 폰에만 저장됩니다. 키가 없으면 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>에서 만들 수 있습니다.</p>
-  <label for="key">Gemini API 키</label>
-  <input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza...">
-  <button id="btnModels">키 확인하고 모델 목록 불러오기</button>
-  <label for="model">모델</label>
-  <select id="model"></select>
+  <details id="keyBox" open>
+    <summary id="keySum">키·모델 설정</summary>
+    <p class="sub">키는 이 폰에만 저장됩니다. 키가 없으면 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>에서 만들 수 있습니다.</p>
+    <label for="key">Gemini API 키</label>
+    <input id="key" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="AIza...">
+    <button id="btnModels">키 확인하고 모델 목록 불러오기</button>
+    <label for="model">모델</label>
+    <select id="model"></select>
+  </details>
   <button class="primary" id="btnTL" disabled>녹음을 받아써서 타임라인에 넣기</button>
   <p class="state" id="s3">아직 시험하지 않음</p>
 </section>
@@ -143,7 +147,7 @@ a{color:var(--accent)}
 <script>
 (function(){
 "use strict";
-var VERSION="v0.04";
+var VERSION="v0.05";
 var BASE="https://generativelanguage.googleapis.com/v1beta";
 var FALLBACK_MODELS=["gemini-3.8-flash","gemini-3.6-flash","gemini-3.5-flash-lite","gemini-4-hydrogen"];
 var MAX_REQUEST_B64=19*1024*1024;
@@ -409,6 +413,7 @@ function finishRec(){
 }
 
 function getKey(){return $("key").value.trim();}
+function keySum(){$("keySum").textContent="키·모델 설정 · "+(getKey()?($("model").value||"모델 없음"):"키 없음");}
 function fillModels(list){
   var sel=$("model");sel.textContent="";
   list.forEach(function(m){var o=document.createElement("option");o.value=m;o.textContent=m;sel.appendChild(o);});
@@ -431,6 +436,7 @@ async function loadModels(){
       .filter(function(n){return /^gemini/.test(n)&&!/tts|image|embedding|live|audio-dialog/.test(n);});
     if(!names.length)names=FALLBACK_MODELS.slice();
     fillModels(names);
+    $("keyBox").open=false;keySum();
     setState("s3","키 확인 완료. 모델 "+names.length+"개를 불러왔습니다.","ok");
     log("모델 목록 "+names.length+"개, 선택: "+$("model").value);
   }catch(e){
@@ -714,8 +720,15 @@ $("btnAddPhoto").addEventListener("click",function(){pickBefore=null;$("filePick
 $("btnAI").addEventListener("click",makeRecipe);
 $("btnCopy").addEventListener("click",copyResults);
 
-try{var k=localStorage.getItem("cook.key");if(k)$("key").value=k;}catch(e){}
-fillModels(FALLBACK_MODELS.slice());
+var k=null,sm=null;
+try{k=localStorage.getItem("cook.key");sm=localStorage.getItem("cook.model");}catch(e){}
+if(k)$("key").value=k;
+var startList=FALLBACK_MODELS.slice();if(sm&&startList.indexOf(sm)<0)startList.unshift(sm);
+fillModels(startList);
+if(k)$("keyBox").open=false;
+keySum();
+$("model").addEventListener("change",function(){try{localStorage.setItem("cook.model",$("model").value);}catch(e){}keySum();});
+$("key").addEventListener("input",keySum);
 showEnv();
 })();
 </script>
